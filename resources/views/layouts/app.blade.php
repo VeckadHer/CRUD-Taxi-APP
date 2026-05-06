@@ -31,18 +31,25 @@
                     <!-- Left Side Of Navbar -->
                     <ul class="navbar-nav me-auto">
                      <li class="nav-item">
-                     <a class="nav-link" href="{{ route('empleado.index') }}">{{ __('Empleado') }}</a>
-                    
-                    
-                    
-                    </li>   
-                    <a class="nav-link" href="{{ route('conductor.index') }}">{{ __('Conductores') }}</a>
+                        <a class="nav-link" href="{{ route('empleado.index') }}">{{ __('Empleado') }}</a>
+                    </li>
 
-
-
-
-
-                    
+                    <li class="nav-item dropdown">
+                        <a id="taxiDropdown" class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" v-pre>
+                            {{ __('Taxi App') }}
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end" aria-labelledby="taxiDropdown">
+                            <a class="dropdown-item" href="{{ route('viaje.index') }}">
+                                {{ __('Viajes') }}
+                            </a>
+                            <a class="dropdown-item" href="{{ route('conductor.index') }}">
+                                {{ __('Conductores') }}
+                            </a>
+                            <a class="dropdown-item" href="{{ route('tarifa.index') }}">
+                                {{ __('Tarifas') }}
+                            </a>
+                        </div>
+                    </li>           
                     </ul>
 
                     <!-- Right Side Of Navbar -->
