@@ -1,87 +1,87 @@
-<!doctype html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<!DOCTYPE html>
+<html lang="es">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
-    <!-- CSRF Token -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{{ config('app.name', 'Iguala App') }}</title>
 
-    <title>{{ config('app.name', 'Laravel') }}</title>
-
-    <!-- Fonts -->
-    <link rel="dns-prefetch" href="//fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=Nunito" rel="stylesheet">
-
-    <!-- Scripts -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f5f7fa; }
+        .navbar-brand { font-weight: bold; }
+        .card { border-radius: 10px; }
+    </style>
 </head>
 <body>
     <div id="app">
-        <nav class="navbar navbar-expand-md navbar-light bg-white shadow-sm">
+        <nav class="navbar navbar-expand-md navbar-dark bg-dark shadow">
             <div class="container">
-                <a class="navbar-brand" href="{{ url('/') }}">
-                    {{ config('app.name', 'Laravel') }}
+                <a class="navbar-brand" href="{{ url('/dashboard') }}">
+                    🚕 {{ config('app.name', 'Iguala App') }}
                 </a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="{{ __('Toggle navigation') }}">
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent">
                     <span class="navbar-toggler-icon"></span>
                 </button>
 
                 <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                    <!-- Left Side Of Navbar -->
                     <ul class="navbar-nav me-auto">
-                     <li class="nav-item">
-                        <a class="nav-link" href="{{ route('empleado.index') }}">{{ __('Empleado') }}</a>
-                    </li>
+                        @auth
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url('/dashboard') }}">
+                                <i class="bi bi-speedometer2"></i> Dashboard
+                            </a>
+                        </li>
 
-                    <li class="nav-item dropdown">
-                        <a id="taxiDropdown" class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" v-pre>
-                            {{ __('Taxi App') }}
-                        </a>
-                        <div class="dropdown-menu dropdown-menu-end" aria-labelledby="taxiDropdown">
-                            <a class="dropdown-item" href="{{ route('viaje.index') }}">
-                                {{ __('Viajes') }}
-                            </a>
-                            <a class="dropdown-item" href="{{ route('conductor.index') }}">
-                                {{ __('Conductores') }}
-                            </a>
-                            <a class="dropdown-item" href="{{ route('tarifa.index') }}">
-                                {{ __('Tarifas') }}
-                            </a>
-                        </div>
-                    </li>           
+                        @if(Auth::user()->esAdmin())
+                            {{-- MENÚ ADMIN --}}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url('/empleado') }}">Empleados</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url('/viaje') }}">Viajes</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url('/conductor') }}">Conductores</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url('/tarifa') }}">Tarifas</a>
+                            </li>
+                        @elseif(Auth::user()->esConductor())
+                            {{-- MENÚ CONDUCTOR --}}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url('/viaje') }}">Mis Viajes</a>
+                            </li>
+                        @elseif(Auth::user()->esPasajero())
+                            {{-- MENÚ PASAJERO --}}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url('/viaje/create') }}">
+                                    <i class="bi bi-plus-circle"></i> Solicitar Viaje
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url('/viaje') }}">Mis Viajes</a>
+                            </li>
+                        @endif
+                        @endauth
                     </ul>
 
-                    <!-- Right Side Of Navbar -->
                     <ul class="navbar-nav ms-auto">
-                        <!-- Authentication Links -->
                         @guest
-                            @if (Route::has('login'))
-                                <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('login') }}">{{ __('Login') }}</a>
-                                </li>
-                            @endif
-
-                            @if (Route::has('register'))
-                                <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('register') }}">{{ __('Register') }}</a>
-                                </li>
-                            @endif
+                            <li class="nav-item"><a class="nav-link" href="{{ url('/login') }}">Login</a></li>
+                            <li class="nav-item"><a class="nav-link" href="{{ url('/register') }}">Registrarse</a></li>
                         @else
                             <li class="nav-item dropdown">
-                                <a id="navbarDropdown" class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" v-pre>
-                                    {{ Auth::user()->name }}
+                                <a id="navbarDropdown" class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                    {{ Auth::user()->nombre_completo }}
+                                    <span class="badge bg-secondary">{{ ucfirst(Auth::user()->rol) }}</span>
                                 </a>
-
-                                <div class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
-                                    <a class="dropdown-item" href="{{ route('logout') }}"
-                                       onclick="event.preventDefault();
-                                                     document.getElementById('logout-form').submit();">
-                                        {{ __('Logout') }}
-                                    </a>
-
-                                    <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none">
+                                <div class="dropdown-menu dropdown-menu-end">
+                                    <form method="POST" action="{{ url('/logout') }}">
                                         @csrf
+                                        <button type="submit" class="dropdown-item">Cerrar Sesión</button>
                                     </form>
                                 </div>
                             </li>
@@ -95,6 +95,7 @@
             @yield('content')
         </main>
     </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
