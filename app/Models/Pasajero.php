@@ -9,7 +9,7 @@ class Pasajero extends Model
     protected $table = 'pasajero';
     protected $primaryKey = 'id_pasajero';
     public $timestamps = false;
-    
+
     protected $fillable = ['id_usuario', 'metodo_pago_default', 'calificacion_promedio'];
 
     public function usuario()

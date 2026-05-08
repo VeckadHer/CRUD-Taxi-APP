@@ -6,7 +6,8 @@ use App\Models\Viaje;
 use App\Models\Conductor;
 use App\Models\Pasajero;
 use App\Models\Pago;
-use App\Models\Usuario;
+use App\Models\Empresa;
+use App\Models\SolicitudConductor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,6 @@ class DashboardController extends Controller
         return $this->pasajero();
     }
 
-    // ============= DASHBOARD ADMIN =============
     private function admin()
     {
         $hoy = date('Y-m-d');
@@ -36,33 +36,25 @@ class DashboardController extends Controller
             'total_conductores'  => Conductor::count(),
             'conductores_disponibles' => Conductor::where('disponible', true)->count(),
             'total_pasajeros'    => Pasajero::count(),
-            'ingresos_hoy'       => Pago::where('estado_pago', 'pagado')
-                                    ->whereDate('fecha_pago', $hoy)
-                                    ->sum('monto'),
+            'total_empresas'     => Empresa::count(),
+            'ingresos_hoy'       => Pago::where('estado_pago', 'pagado')->whereDate('fecha_pago', $hoy)->sum('monto'),
             'ingresos_total'     => Pago::where('estado_pago', 'pagado')->sum('monto'),
+            'solicitudes_pendientes' => SolicitudConductor::where('estado', 'pendiente')->count(),
         ];
 
-        // Mejor conductor por calificación
-        $mejorConductor = Conductor::with('usuario')
-            ->orderByDesc('calificacion_promedio')
-            ->first();
+        $mejorConductor = Conductor::with(['usuario', 'empresa'])
+            ->orderByDesc('calificacion_promedio')->first();
 
-        // Pasajero con más viajes
         $pasajeroTop = DB::table('pasajero')
             ->leftJoin('viaje', 'pasajero.id_pasajero', '=', 'viaje.id_pasajero')
             ->leftJoin('usuario', 'pasajero.id_usuario', '=', 'usuario.id_usuario')
             ->select('usuario.nombre_completo', DB::raw('COUNT(viaje.id_viaje) as total'))
             ->groupBy('pasajero.id_pasajero', 'usuario.nombre_completo')
-            ->orderByDesc('total')
-            ->first();
+            ->orderByDesc('total')->first();
 
-        // Viajes recientes (todos los estados)
-        $viajesRecientes = Viaje::with(['pasajero.usuario', 'conductor.usuario', 'tarifa'])
-            ->orderByDesc('id_viaje')
-            ->limit(10)
-            ->get();
+        $viajesRecientes = Viaje::with(['pasajero.usuario', 'conductor.usuario', 'conductor.empresa', 'tarifa'])
+            ->orderByDesc('id_viaje')->limit(10)->get();
 
-        // Datos para gráfica: viajes por estado
         $viajesPorEstado = [
             'Pendientes' => $stats['viajes_pendientes'],
             'En Curso' => $stats['viajes_en_curso'],
@@ -70,52 +62,55 @@ class DashboardController extends Controller
             'Cancelados' => $stats['viajes_cancelados'],
         ];
 
-        // Métodos de pago
-        $metodosPago = Pago::select('metodo_pago', DB::raw('count(*) as total'))
-            ->groupBy('metodo_pago')
-            ->pluck('total', 'metodo_pago')
+        // CONDUCTORES ACTIVOS (en lugar de métodos de pago)
+        $conductoresActivos = Conductor::with(['usuario:id_usuario,nombre_completo', 'empresa:id_empresa,nombre'])
+            ->where('disponible', true)
+            ->where('estado', 'disponible')
+            ->orderByDesc('calificacion_promedio')
+            ->limit(15)
+            ->get();
+
+        // Conductores por empresa para gráfico
+        $conductoresPorEmpresa = DB::table('conductor')
+            ->join('empresa', 'conductor.id_empresa', '=', 'empresa.id_empresa')
+            ->select('empresa.nombre', DB::raw('COUNT(*) as total'))
+            ->groupBy('empresa.nombre')
+            ->pluck('total', 'nombre')
             ->toArray();
+
+        // Solicitudes pendientes (de personas que dejaron tel)
+        $solicitudesPendientes = SolicitudConductor::where('estado', 'pendiente')
+            ->orderByDesc('fecha_solicitud')
+            ->limit(5)->get();
 
         return view('dashboard.admin', compact(
             'stats', 'mejorConductor', 'pasajeroTop',
-            'viajesRecientes', 'viajesPorEstado', 'metodosPago'
+            'viajesRecientes', 'viajesPorEstado',
+            'conductoresActivos', 'conductoresPorEmpresa',
+            'solicitudesPendientes'
         ));
     }
 
-    // ============= DASHBOARD CONDUCTOR =============
     private function conductor()
     {
         $user = Auth::user();
-        $conductor = Conductor::where('id_usuario', $user->id_usuario)->first();
+        $conductor = Conductor::with('empresa')->where('id_usuario', $user->id_usuario)->first();
+        if (!$conductor) return redirect('/')->with('error', 'No tienes perfil de conductor');
 
-        if (!$conductor) {
-            return redirect('/')->with('error', 'No tienes perfil de conductor');
-        }
-
-        // Viaje activo del conductor
         $viajeActivo = Viaje::with(['pasajero.usuario', 'tarifa'])
             ->where('id_conductor', $conductor->id_conductor)
-            ->whereIn('estado', ['en_curso'])
-            ->first();
+            ->whereIn('estado', ['en_curso'])->first();
 
-        // Solicitudes pendientes (sin conductor asignado o asignado a este)
         $solicitudes = Viaje::with(['pasajero.usuario', 'tarifa'])
             ->where('estado', 'solicitado')
-            ->where(function($q) use ($conductor) {
-                $q->whereNull('id_conductor')
-                  ->orWhere('id_conductor', $conductor->id_conductor);
-            })
-            ->orderByDesc('id_viaje')
-            ->limit(10)
-            ->get();
+            ->where('id_conductor', $conductor->id_conductor) // solo las dirigidas a él
+            ->orderByDesc('id_viaje')->limit(10)->get();
 
-        // Historial del día
         $hoy = date('Y-m-d');
         $historialHoy = Viaje::with(['pasajero.usuario'])
             ->where('id_conductor', $conductor->id_conductor)
             ->whereDate('fecha_fin', $hoy)
-            ->orderByDesc('fecha_fin')
-            ->get();
+            ->orderByDesc('fecha_fin')->get();
 
         $stats = [
             'viajes_completados_hoy' => $historialHoy->where('estado', 'completado')->count(),
@@ -132,28 +127,19 @@ class DashboardController extends Controller
         ));
     }
 
-    // ============= DASHBOARD PASAJERO =============
     private function pasajero()
     {
         $user = Auth::user();
         $pasajero = Pasajero::where('id_usuario', $user->id_usuario)->first();
+        if (!$pasajero) return redirect('/')->with('error', 'No tienes perfil de pasajero');
 
-        if (!$pasajero) {
-            return redirect('/')->with('error', 'No tienes perfil de pasajero');
-        }
-
-        // Viaje activo
-        $viajeActivo = Viaje::with(['conductor.usuario', 'tarifa'])
+        $viajeActivo = Viaje::with(['conductor.usuario', 'conductor.empresa', 'tarifa'])
             ->where('id_pasajero', $pasajero->id_pasajero)
-            ->whereIn('estado', ['solicitado', 'en_curso'])
-            ->first();
+            ->whereIn('estado', ['solicitado', 'en_curso'])->first();
 
-        // Histórico de viajes
-        $historial = Viaje::with(['conductor.usuario', 'tarifa'])
+        $historial = Viaje::with(['conductor.usuario', 'conductor.empresa', 'tarifa'])
             ->where('id_pasajero', $pasajero->id_pasajero)
-            ->orderByDesc('id_viaje')
-            ->limit(10)
-            ->get();
+            ->orderByDesc('id_viaje')->limit(10)->get();
 
         $stats = [
             'viajes_completados' => Viaje::where('id_pasajero', $pasajero->id_pasajero)

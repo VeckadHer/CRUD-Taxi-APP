@@ -9,27 +9,23 @@ class TarifaController extends Controller
 {
     public function index()
     {
-        $tarifas = Tarifa::paginate(5);
+        $tarifas = Tarifa::paginate(10);
         return view('tarifa.index', compact('tarifas'));
     }
 
-    public function create()
-    {
-        return view('tarifa.create');
-    }
+    public function create() { return view('tarifa.create'); }
 
     public function store(Request $request)
     {
         $request->validate([
-            'tipo_servicio' => 'required|string',
-            'tarifa_base' => 'required|numeric',
-            'costo_por_km' => 'required|numeric',
-            'costo_por_minuto' => 'required|numeric',
-            'tarifa_minima' => 'required|numeric',
+            'tipo_servicio' => 'required|string|max:100',
+            'tarifa_base' => 'required|numeric|min:0',
+            'costo_por_km' => 'required|numeric|min:0',
+            'costo_por_minuto' => 'required|numeric|min:0',
+            'tarifa_minima' => 'required|numeric|min:0',
         ]);
-
         Tarifa::create($request->all());
-        return redirect('tarifa')->with('mensaje', 'Tarifa creada');
+        return redirect('/tarifa')->with('mensaje', '✓ Tarifa creada');
     }
 
     public function edit($id)
@@ -42,12 +38,18 @@ class TarifaController extends Controller
     {
         $tarifa = Tarifa::findOrFail($id);
         $tarifa->update($request->all());
-        return redirect('tarifa')->with('mensaje', 'Tarifa actualizada');
+        return redirect('/tarifa')->with('mensaje', '✓ Tarifa actualizada');
     }
 
     public function destroy($id)
     {
         Tarifa::destroy($id);
-        return redirect('tarifa')->with('mensaje', 'Tarifa eliminada');
+        return redirect('/tarifa')->with('mensaje', '✓ Tarifa eliminada');
+    }
+
+    public function show($id)
+    {
+        $tarifa = Tarifa::findOrFail($id);
+        return view('tarifa.show', compact('tarifa'));
     }
 }

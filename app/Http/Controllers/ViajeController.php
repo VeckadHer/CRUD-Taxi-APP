@@ -6,6 +6,7 @@ use App\Models\Viaje;
 use App\Models\Pasajero;
 use App\Models\Conductor;
 use App\Models\Tarifa;
+use App\Models\Empresa;
 use App\Models\Pago;
 use App\Models\Notificacion;
 use App\Services\TarifaService;
@@ -17,9 +18,8 @@ class ViajeController extends Controller
     public function index()
     {
         $user = Auth::user();
-        $query = Viaje::with(['pasajero.usuario', 'conductor.usuario', 'tarifa']);
+        $query = Viaje::with(['pasajero.usuario', 'conductor.usuario', 'conductor.empresa', 'tarifa']);
 
-        // Filtrar según rol
         if ($user && $user->esPasajero()) {
             $pasajero = Pasajero::where('id_usuario', $user->id_usuario)->first();
             if ($pasajero) $query->where('id_pasajero', $pasajero->id_pasajero);
@@ -34,31 +34,35 @@ class ViajeController extends Controller
 
     public function create()
     {
+        $empresas = Empresa::where('activa', true)->get();
         $tarifas = Tarifa::all();
-        $lugares = TarifaService::lugaresIguala();
-        return view('viaje.create', compact('tarifas', 'lugares'));
+        return view('viaje.create', compact('empresas', 'tarifas'));
     }
 
     public function store(Request $request)
     {
         $request->validate([
+            'id_empresa' => 'required|exists:empresa,id_empresa',
+            'id_conductor' => 'required|exists:conductor,id_conductor',
+            'id_tarifa' => 'required|exists:tarifa,id_tarifa',
             'origen_descripcion' => 'required|string',
             'destino_descripcion' => 'required|string',
             'origen_lat' => 'required|numeric',
             'origen_lng' => 'required|numeric',
             'destino_lat' => 'required|numeric',
             'destino_lng' => 'required|numeric',
-            'id_tarifa' => 'required|exists:tarifa,id_tarifa',
         ]);
 
         $user = Auth::user();
         $pasajero = Pasajero::where('id_usuario', $user->id_usuario)->first();
+        if (!$pasajero) return back()->with('error', 'Necesitas un perfil de pasajero');
 
-        if (!$pasajero) {
-            return back()->with('error', 'Necesitas un perfil de pasajero');
+        // Verificar que el conductor sigue disponible
+        $conductor = Conductor::find($request->id_conductor);
+        if (!$conductor || !$conductor->disponible) {
+            return back()->with('error', 'Ese conductor ya no está disponible. Intenta con otro.');
         }
 
-        // Calcular tarifa
         $calculo = TarifaService::calcularDesdeCoordenadas(
             $request->origen_lat, $request->origen_lng,
             $request->destino_lat, $request->destino_lng,
@@ -67,6 +71,7 @@ class ViajeController extends Controller
 
         $viaje = Viaje::create([
             'id_pasajero' => $pasajero->id_pasajero,
+            'id_conductor' => $request->id_conductor,
             'id_tarifa' => $request->id_tarifa,
             'origen_descripcion' => $request->origen_descripcion,
             'origen_lat' => $request->origen_lat,
@@ -81,23 +86,17 @@ class ViajeController extends Controller
             'tarifa_estimada' => $calculo['tarifa_total'],
         ]);
 
-        // Notificar a conductores disponibles
-        Conductor::where('disponible', true)->where('estado', 'activo')
-            ->get()->each(function($c) use ($viaje) {
-                Notificacion::create([
-                    'id_usuario' => $c->id_usuario,
-                    'id_viaje' => $viaje->id_viaje,
-                    'tipo' => 'nuevo_viaje',
-                    'mensaje' => 'Nueva solicitud de viaje: ' . $viaje->origen_descripcion . ' → ' . $viaje->destino_descripcion,
-                ]);
-            });
+        // Notificar al conductor
+        Notificacion::create([
+            'id_usuario' => $conductor->id_usuario,
+            'id_viaje' => $viaje->id_viaje,
+            'tipo' => 'nuevo_viaje',
+            'mensaje' => 'Nueva solicitud: ' . $request->origen_descripcion . ' → ' . $request->destino_descripcion,
+        ]);
 
-        return redirect('/dashboard')->with('mensaje', '✓ Viaje solicitado. Esperando conductor.');
+        return redirect('/dashboard')->with('mensaje', '✓ Viaje solicitado con ' . $conductor->usuario->nombre_completo);
     }
 
-    /**
-     * Conductor acepta un viaje
-     */
     public function aceptar($id)
     {
         $user = Auth::user();
@@ -105,8 +104,9 @@ class ViajeController extends Controller
         if (!$conductor) return back()->with('error', 'Solo conductores');
 
         $viaje = Viaje::findOrFail($id);
-        if ($viaje->estado !== 'solicitado') {
-            return back()->with('error', 'El viaje ya no está disponible');
+        if ($viaje->estado !== 'solicitado') return back()->with('error', 'Viaje ya no disponible');
+        if ($viaje->id_conductor && $viaje->id_conductor != $conductor->id_conductor) {
+            return back()->with('error', 'Este viaje fue asignado a otro conductor');
         }
 
         $viaje->update([
@@ -114,32 +114,24 @@ class ViajeController extends Controller
             'estado' => 'en_curso',
             'fecha_inicio' => now(),
         ]);
+        $conductor->update(['disponible' => false, 'estado' => 'en_viaje']);
 
-        $conductor->update(['disponible' => false, 'estado' => 'ocupado']);
-
-        // Notificar al pasajero
-        $pasajero = $viaje->pasajero;
-        if ($pasajero) {
+        if ($viaje->pasajero) {
             Notificacion::create([
-                'id_usuario' => $pasajero->id_usuario,
+                'id_usuario' => $viaje->pasajero->id_usuario,
                 'id_viaje' => $viaje->id_viaje,
                 'tipo' => 'viaje_aceptado',
                 'mensaje' => '¡Tu viaje fue aceptado por ' . $user->nombre_completo . '!',
             ]);
         }
 
-        return back()->with('mensaje', '✓ Viaje aceptado. Inicia el recorrido.');
+        return back()->with('mensaje', '✓ Viaje aceptado');
     }
 
-    /**
-     * Conductor finaliza el viaje
-     */
     public function finalizar($id)
     {
         $viaje = Viaje::findOrFail($id);
-        if ($viaje->estado !== 'en_curso') {
-            return back()->with('error', 'El viaje no está en curso');
-        }
+        if ($viaje->estado !== 'en_curso') return back()->with('error', 'Viaje no está en curso');
 
         $viaje->update([
             'estado' => 'completado',
@@ -147,12 +139,10 @@ class ViajeController extends Controller
             'tarifa_final' => $viaje->tarifa_estimada,
         ]);
 
-        // Liberar conductor
         if ($viaje->conductor) {
-            $viaje->conductor->update(['disponible' => true, 'estado' => 'activo']);
+            $viaje->conductor->update(['disponible' => true, 'estado' => 'disponible']);
         }
 
-        // Crear pago automático
         Pago::create([
             'id_viaje' => $viaje->id_viaje,
             'monto' => $viaje->tarifa_final,
@@ -162,7 +152,6 @@ class ViajeController extends Controller
             'referencia' => 'AUTO-' . $viaje->id_viaje,
         ]);
 
-        // Notificar pasajero
         if ($viaje->pasajero) {
             Notificacion::create([
                 'id_usuario' => $viaje->pasajero->id_usuario,
@@ -175,22 +164,15 @@ class ViajeController extends Controller
         return back()->with('mensaje', '✓ Viaje completado. Pago registrado.');
     }
 
-    /**
-     * Cancelar viaje (pasajero o conductor)
-     */
     public function cancelar(Request $request, $id)
     {
         $viaje = Viaje::findOrFail($id);
         $user = Auth::user();
 
         if (!in_array($viaje->estado, ['solicitado', 'en_curso'])) {
-            return back()->with('error', 'No se puede cancelar este viaje');
+            return back()->with('error', 'No se puede cancelar');
         }
 
-        $canceladoPor = $user->rol;
-        $razon = $request->input('razon', 'Sin razón especificada');
-
-        // Penalización si está en curso
         $penalizacion = 0;
         if ($viaje->estado === 'en_curso') {
             $penalizacion = round($viaje->tarifa_estimada * 0.20, 2);
@@ -199,17 +181,15 @@ class ViajeController extends Controller
         $viaje->update([
             'estado' => 'cancelado',
             'fecha_fin' => now(),
-            'cancelado_por' => $canceladoPor,
-            'razon_cancelacion' => $razon,
+            'cancelado_por' => $user->rol,
+            'razon_cancelacion' => $request->input('razon', 'Sin razón'),
             'tarifa_final' => $penalizacion,
         ]);
 
-        // Liberar conductor
         if ($viaje->conductor) {
-            $viaje->conductor->update(['disponible' => true, 'estado' => 'activo']);
+            $viaje->conductor->update(['disponible' => true, 'estado' => 'disponible']);
         }
 
-        // Si hay penalización, registrar pago
         if ($penalizacion > 0) {
             Pago::create([
                 'id_viaje' => $viaje->id_viaje,
@@ -221,12 +201,9 @@ class ViajeController extends Controller
             ]);
         }
 
-        return redirect('/dashboard')->with('mensaje', '✓ Viaje cancelado.' . ($penalizacion > 0 ? ' Penalización: $' . $penalizacion : ''));
+        return redirect('/dashboard')->with('mensaje', '✓ Viaje cancelado' . ($penalizacion ? ". Penalización: \${$penalizacion}" : ''));
     }
 
-    /**
-     * Calcular tarifa via AJAX (para vista previa)
-     */
     public function calcularTarifa(Request $request)
     {
         $request->validate([
@@ -237,26 +214,17 @@ class ViajeController extends Controller
             'id_tarifa' => 'required|exists:tarifa,id_tarifa',
         ]);
 
-        $resultado = TarifaService::calcularDesdeCoordenadas(
+        return response()->json(TarifaService::calcularDesdeCoordenadas(
             $request->origen_lat, $request->origen_lng,
             $request->destino_lat, $request->destino_lng,
             $request->id_tarifa
-        );
-
-        return response()->json($resultado);
+        ));
     }
 
     public function show($id)
     {
-        $viaje = Viaje::with(['pasajero.usuario', 'conductor.usuario', 'tarifa', 'pago'])
-            ->findOrFail($id);
+        $viaje = Viaje::with(['pasajero.usuario', 'conductor.usuario', 'conductor.empresa', 'tarifa', 'pago'])->findOrFail($id);
         return view('viaje.show', compact('viaje'));
-    }
-
-    public function destroy($id)
-    {
-        Viaje::destroy($id);
-        return redirect('viaje')->with('mensaje', 'Viaje eliminado');
     }
 
     public function edit($id) {
@@ -269,5 +237,32 @@ class ViajeController extends Controller
         $viaje = Viaje::findOrFail($id);
         $viaje->update($request->all());
         return redirect('viaje')->with('mensaje', 'Viaje actualizado');
+    }
+
+    public function destroy($id) {
+        Viaje::destroy($id);
+        return redirect('viaje')->with('mensaje', 'Viaje eliminado');
+    }
+
+    /**
+     * API: Conductores disponibles de una empresa específica
+     */
+    public function conductoresEmpresa($idEmpresa)
+    {
+        $conductores = Conductor::with('usuario:id_usuario,nombre_completo')
+            ->where('id_empresa', $idEmpresa)
+            ->where('disponible', true)
+            ->where('estado', 'disponible')
+            ->get()
+            ->map(function($c) {
+                return [
+                    'id_conductor' => $c->id_conductor,
+                    'nombre_completo' => $c->usuario->nombre_completo ?? 'N/A',
+                    'calificacion_promedio' => (float) $c->calificacion_promedio,
+                    'licencia' => $c->licencia_conducir,
+                ];
+            });
+
+        return response()->json($conductores);
     }
 }

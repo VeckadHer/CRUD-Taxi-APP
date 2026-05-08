@@ -19,7 +19,7 @@
     <div id="app">
         <nav class="navbar navbar-expand-md navbar-dark bg-dark shadow">
             <div class="container">
-                <a class="navbar-brand" href="{{ url('/dashboard') }}">
+                <a class="navbar-brand" href="{{ url(auth()->check() ? '/dashboard' : '/login') }}">
                     🚕 {{ config('app.name', 'Iguala App') }}
                 </a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent">
@@ -36,43 +36,25 @@
                         </li>
 
                         @if(Auth::user()->esAdmin())
-                            {{-- MENÚ ADMIN --}}
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url('/empleado') }}">Empleados</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url('/viaje') }}">Viajes</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url('/conductor') }}">Conductores</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url('/tarifa') }}">Tarifas</a>
-                            </li>
+                            <li class="nav-item"><a class="nav-link" href="{{ url('/conductor') }}">Conductores</a></li>
+                            <li class="nav-item"><a class="nav-link" href="{{ url('/empresa') }}">Empresas</a></li>
+                            <li class="nav-item"><a class="nav-link" href="{{ url('/viaje') }}">Viajes</a></li>
+                            <li class="nav-item"><a class="nav-link" href="{{ url('/tarifa') }}">Tarifas</a></li>
                         @elseif(Auth::user()->esConductor())
-                            {{-- MENÚ CONDUCTOR --}}
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url('/viaje') }}">Mis Viajes</a>
-                            </li>
+                            <li class="nav-item"><a class="nav-link" href="{{ url('/viaje') }}">Mis Viajes</a></li>
                         @elseif(Auth::user()->esPasajero())
-                            {{-- MENÚ PASAJERO --}}
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ url('/viaje/create') }}">
                                     <i class="bi bi-plus-circle"></i> Solicitar Viaje
                                 </a>
                             </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url('/viaje') }}">Mis Viajes</a>
-                            </li>
+                            <li class="nav-item"><a class="nav-link" href="{{ url('/viaje') }}">Mis Viajes</a></li>
                         @endif
                         @endauth
                     </ul>
 
                     <ul class="navbar-nav ms-auto">
-                        @guest
-                            <li class="nav-item"><a class="nav-link" href="{{ url('/login') }}">Login</a></li>
-                            <li class="nav-item"><a class="nav-link" href="{{ url('/register') }}">Registrarse</a></li>
-                        @else
+                        @auth
                             <li class="nav-item dropdown">
                                 <a id="navbarDropdown" class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                                     {{ Auth::user()->nombre_completo }}
@@ -85,7 +67,7 @@
                                     </form>
                                 </div>
                             </li>
-                        @endguest
+                        @endauth
                     </ul>
                 </div>
             </div>
