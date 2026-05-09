@@ -40,6 +40,7 @@
                             <li class="nav-item"><a class="nav-link" href="{{ url('/empresa') }}">Empresas</a></li>
                             <li class="nav-item"><a class="nav-link" href="{{ url('/viaje') }}">Viajes</a></li>
                             <li class="nav-item"><a class="nav-link" href="{{ url('/tarifa') }}">Tarifas</a></li>
+                            <li class="nav-item"><a class="nav-link" href="{{ url('/solicitudes-conductor') }}">📞 Solicitudes</a></li>
                         @elseif(Auth::user()->esConductor())
                             <li class="nav-item"><a class="nav-link" href="{{ url('/viaje') }}">Mis Viajes</a></li>
                         @elseif(Auth::user()->esPasajero())

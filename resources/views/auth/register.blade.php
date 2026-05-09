@@ -9,7 +9,10 @@
                     <h4 class="mb-0">📝 Crear Cuenta de Usuario</h4>
                 </div>
                 <div class="card-body p-4">
-                    <p class="text-muted">El registro es exclusivo para usuarios. Si quieres ser conductor, <a href="{{ url('/solicitud-conductor') }}">deja tus datos aquí</a>.</p>
+                    <div class="alert alert-info">
+                        <strong>ℹ️ Importante:</strong> El registro es exclusivo para pasajeros y requiere un correo <strong>@gmail.com</strong>.
+                        <br>Si quieres ser conductor, <a href="{{ url('/solicitud-conductor') }}">deja tus datos aquí</a>.
+                    </div>
 
                     @if($errors->any())
                     <div class="alert alert-danger">
@@ -60,8 +63,11 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">Email *</label>
-                            <input type="email" name="email" class="form-control" value="{{ old('email') }}" required>
+                            <label class="form-label">Email * <small class="text-muted">(debe ser @gmail.com)</small></label>
+                            <input type="email" name="email" class="form-control" value="{{ old('email') }}" 
+                                   pattern="[a-zA-Z0-9._%+-]+@gmail\.com$" 
+                                   title="Solo se permiten correos @gmail.com"
+                                   placeholder="ejemplo@gmail.com" required>
                         </div>
 
                         <div class="row">

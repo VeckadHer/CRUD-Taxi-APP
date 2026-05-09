@@ -10,12 +10,11 @@
 
     <h2 class="mb-4">📊 Panel Administrativo</h2>
 
-    {{-- Tarjetas estado de viajes --}}
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card text-white bg-warning shadow">
                 <div class="card-body">
-                    <h6>Viajes Pendientes</h6>
+                    <h6>Pendientes</h6>
                     <h2 class="mb-0">{{ $stats['viajes_pendientes'] }}</h2>
                     <small>Esperando aceptación</small>
                 </div>
@@ -48,7 +47,6 @@
         </div>
     </div>
 
-    {{-- KPIs Económicos --}}
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card border-success shadow-sm">
@@ -85,7 +83,6 @@
         </div>
     </div>
 
-    {{-- Solicitudes pendientes (conductores que dejaron tel) --}}
     @if($solicitudesPendientes->count() > 0)
     <div class="card border-warning shadow-sm mb-4">
         <div class="card-header bg-warning text-dark d-flex justify-content-between">
@@ -95,7 +92,7 @@
         <div class="card-body p-0">
             <table class="table table-sm mb-0">
                 <thead class="table-light">
-                    <tr><th>Nombre</th><th>Teléfono</th><th>Email</th><th>Mensaje</th><th>Fecha</th></tr>
+                    <tr><th>Nombre</th><th>Teléfono</th><th>Email</th><th>Mensaje</th><th>Fecha</th><th>Acción</th></tr>
                 </thead>
                 <tbody>
                     @foreach($solicitudesPendientes as $s)
@@ -105,6 +102,7 @@
                         <td>{{ $s->email ?? '—' }}</td>
                         <td><small>{{ Str::limit($s->mensaje, 50) }}</small></td>
                         <td><small>{{ \Carbon\Carbon::parse($s->fecha_solicitud)->format('d/m H:i') }}</small></td>
+                        <td><a href="{{ url('/solicitudes-conductor/'.$s->id_solicitud) }}" class="btn btn-sm btn-success">✓ Aprobar</a></td>
                     </tr>
                     @endforeach
                 </tbody>
@@ -118,13 +116,13 @@
         <div class="col-md-6">
             <div class="card shadow-sm">
                 <div class="card-header bg-dark text-white"><strong>Distribución de Viajes</strong></div>
-                <div class="card-body"><canvas id="chartViajes"></canvas></div>
+                <div class="card-body" style="height: 300px;"><canvas id="chartViajes"></canvas></div>
             </div>
         </div>
         <div class="col-md-6">
             <div class="card shadow-sm">
                 <div class="card-header bg-dark text-white"><strong>Conductores por Empresa</strong></div>
-                <div class="card-body"><canvas id="chartEmpresas"></canvas></div>
+                <div class="card-body" style="height: 300px;"><canvas id="chartEmpresas"></canvas></div>
             </div>
         </div>
     </div>
@@ -161,7 +159,7 @@
         </div>
     </div>
 
-    {{-- TABLA DE CONDUCTORES ACTIVOS (NUEVO) --}}
+    {{-- Conductores activos --}}
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-success text-white d-flex justify-content-between">
             <strong>🟢 Conductores Activos en Tiempo Real</strong>
@@ -172,12 +170,8 @@
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th>#</th>
-                            <th>Nombre Completo</th>
-                            <th>Empresa</th>
-                            <th>Licencia</th>
-                            <th>Calificación</th>
-                            <th>Estado</th>
+                            <th>#</th><th>Nombre Completo</th><th>Empresa</th>
+                            <th>Licencia</th><th>Calificación</th><th>Estado</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -207,7 +201,7 @@
         </div>
     </div>
 
-    {{-- Viajes recientes --}}
+    {{-- Viajes recientes con fechas y empresas --}}
     <div class="card shadow-sm">
         <div class="card-header bg-dark text-white d-flex justify-content-between">
             <strong>📋 Viajes Recientes</strong>
@@ -218,18 +212,26 @@
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th>#</th><th>Pasajero</th><th>Conductor</th><th>Empresa</th>
-                            <th>Ruta</th><th>Estado</th><th>Tarifa</th>
+                            <th>#</th><th>Fecha</th><th>Pasajero</th><th>Conductor</th>
+                            <th>Empresa</th><th>Ruta</th><th>Estado</th><th>Tarifa</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($viajesRecientes as $v)
                         <tr>
                             <td>{{ $v->id_viaje }}</td>
+                            <td>
+                                <small>
+                                    @if($v->fecha_solicitud)
+                                        {{ \Carbon\Carbon::parse($v->fecha_solicitud)->format('d/m') }}<br>
+                                        <span class="text-muted">{{ \Carbon\Carbon::parse($v->fecha_solicitud)->format('H:i') }}</span>
+                                    @else — @endif
+                                </small>
+                            </td>
                             <td>{{ $v->pasajero->usuario->nombre_completo ?? 'N/A' }}</td>
                             <td>{{ $v->conductor->usuario->nombre_completo ?? '—' }}</td>
                             <td><small class="badge bg-info">{{ $v->conductor->empresa->nombre ?? '—' }}</small></td>
-                            <td><small>{{ $v->origen_descripcion }} → {{ $v->destino_descripcion }}</small></td>
+                            <td><small>{{ Str::limit($v->origen_descripcion, 20) }} → {{ Str::limit($v->destino_descripcion, 20) }}</small></td>
                             <td>
                                 @php $colors = ['solicitado'=>'warning','en_curso'=>'info','completado'=>'success','cancelado'=>'danger']; @endphp
                                 <span class="badge bg-{{ $colors[$v->estado] ?? 'secondary' }}">{{ $v->estado }}</span>
@@ -237,7 +239,7 @@
                             <td>${{ number_format($v->tarifa_final ?? $v->tarifa_estimada, 2) }}</td>
                         </tr>
                         @empty
-                        <tr><td colspan="7" class="text-center text-muted">Sin viajes</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted">Sin viajes</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -248,7 +250,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-new Chart(document.getElementById('chartViajes'), {
+// FIX gráfica: el problema anterior era que el card-body no tenía altura definida
+new Chart(document.getElementById('chartViajes').getContext('2d'), {
     type: 'doughnut',
     data: {
         labels: {!! json_encode(array_keys($viajesPorEstado)) !!},
@@ -256,10 +259,14 @@ new Chart(document.getElementById('chartViajes'), {
             data: {!! json_encode(array_values($viajesPorEstado)) !!},
             backgroundColor: ['#ffc107', '#0dcaf0', '#198754', '#dc3545']
         }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false
     }
 });
 
-new Chart(document.getElementById('chartEmpresas'), {
+new Chart(document.getElementById('chartEmpresas').getContext('2d'), {
     type: 'bar',
     data: {
         labels: {!! json_encode(array_keys($conductoresPorEmpresa)) !!},
@@ -269,7 +276,11 @@ new Chart(document.getElementById('chartEmpresas'), {
             backgroundColor: ['#0d6efd', '#198754', '#ffc107', '#dc3545']
         }]
     },
-    options: { plugins: { legend: { display: false } } }
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } }
+    }
 });
 </script>
 @endsection

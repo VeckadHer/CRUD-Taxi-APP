@@ -8,6 +8,7 @@ use App\Http\Controllers\ConductorController;
 use App\Http\Controllers\TarifaController;
 use App\Http\Controllers\EmpresaController;
 use App\Http\Controllers\EmpleadoController;
+use App\Http\Controllers\SolicitudConductorController;
 
 Route::get('/', function () {
     return redirect(auth()->check() ? '/dashboard' : '/login');
@@ -32,14 +33,23 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/home', [DashboardController::class, 'index']);
 
-    // Viajes - Acciones
-    Route::post('/viaje/calcular-tarifa', [ViajeController::class, 'calcularTarifa']);
+    // Calcular tarifa (acepta GET y POST para evitar 405)
+    Route::match(['get', 'post'], '/viaje/calcular-tarifa', [ViajeController::class, 'calcularTarifa']);
+
+    // Acciones de viaje
     Route::post('/viaje/{id}/aceptar', [ViajeController::class, 'aceptar'])->name('viaje.aceptar');
     Route::post('/viaje/{id}/finalizar', [ViajeController::class, 'finalizar'])->name('viaje.finalizar');
     Route::post('/viaje/{id}/cancelar', [ViajeController::class, 'cancelar'])->name('viaje.cancelar');
 
-    // Conductor - toggle disponibilidad
+    // Toggle disponibilidad conductor
     Route::post('/conductor/toggle-disponibilidad', [ConductorController::class, 'toggleDisponibilidad']);
+
+    // SOLICITUDES DE CONDUCTOR (solo admin) — RESUELVE 404
+    Route::get('/solicitudes-conductor', [SolicitudConductorController::class, 'index']);
+    Route::get('/solicitudes-conductor/{id}', [SolicitudConductorController::class, 'show']);
+    Route::post('/solicitudes-conductor/{id}/aprobar', [SolicitudConductorController::class, 'aprobar']);
+    Route::post('/solicitudes-conductor/{id}/rechazar', [SolicitudConductorController::class, 'rechazar']);
+    Route::delete('/solicitudes-conductor/{id}', [SolicitudConductorController::class, 'destroy']);
 
     // CRUDs
     Route::resource('viaje', ViajeController::class);

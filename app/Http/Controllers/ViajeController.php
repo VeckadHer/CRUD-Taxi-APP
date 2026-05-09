@@ -28,7 +28,7 @@ class ViajeController extends Controller
             if ($conductor) $query->where('id_conductor', $conductor->id_conductor);
         }
 
-        $viajes = $query->orderByDesc('id_viaje')->paginate(10);
+        $viajes = $query->orderByDesc('id_viaje')->paginate(15);
         return view('viaje.index', compact('viajes'));
     }
 
@@ -57,7 +57,6 @@ class ViajeController extends Controller
         $pasajero = Pasajero::where('id_usuario', $user->id_usuario)->first();
         if (!$pasajero) return back()->with('error', 'Necesitas un perfil de pasajero');
 
-        // Verificar que el conductor sigue disponible
         $conductor = Conductor::find($request->id_conductor);
         if (!$conductor || !$conductor->disponible) {
             return back()->with('error', 'Ese conductor ya no está disponible. Intenta con otro.');
@@ -86,7 +85,6 @@ class ViajeController extends Controller
             'tarifa_estimada' => $calculo['tarifa_total'],
         ]);
 
-        // Notificar al conductor
         Notificacion::create([
             'id_usuario' => $conductor->id_usuario,
             'id_viaje' => $viaje->id_viaje,
@@ -94,7 +92,7 @@ class ViajeController extends Controller
             'mensaje' => 'Nueva solicitud: ' . $request->origen_descripcion . ' → ' . $request->destino_descripcion,
         ]);
 
-        return redirect('/dashboard')->with('mensaje', '✓ Viaje solicitado con ' . $conductor->usuario->nombre_completo);
+        return redirect('/dashboard')->with('mensaje', '✓ Viaje solicitado con ' . ($conductor->usuario->nombre_completo ?? 'el conductor'));
     }
 
     public function aceptar($id)
@@ -121,10 +119,9 @@ class ViajeController extends Controller
                 'id_usuario' => $viaje->pasajero->id_usuario,
                 'id_viaje' => $viaje->id_viaje,
                 'tipo' => 'viaje_aceptado',
-                'mensaje' => '¡Tu viaje fue aceptado por ' . $user->nombre_completo . '!',
+                'mensaje' => '¡Tu viaje fue aceptado por ' . ($user->nombre_completo ?? 'el conductor') . '!',
             ]);
         }
-
         return back()->with('mensaje', '✓ Viaje aceptado');
     }
 
@@ -160,7 +157,6 @@ class ViajeController extends Controller
                 'mensaje' => 'Viaje completado. Total: $' . $viaje->tarifa_final,
             ]);
         }
-
         return back()->with('mensaje', '✓ Viaje completado. Pago registrado.');
     }
 
@@ -200,25 +196,72 @@ class ViajeController extends Controller
                 'referencia' => 'CANCEL-' . $viaje->id_viaje,
             ]);
         }
-
         return redirect('/dashboard')->with('mensaje', '✓ Viaje cancelado' . ($penalizacion ? ". Penalización: \${$penalizacion}" : ''));
     }
 
+    /**
+     * CALCULAR TARIFA - acepta datos JSON o form-data
+     * Hace su propio cálculo si TarifaService falla.
+     */
     public function calcularTarifa(Request $request)
     {
-        $request->validate([
-            'origen_lat' => 'required|numeric',
-            'origen_lng' => 'required|numeric',
-            'destino_lat' => 'required|numeric',
-            'destino_lng' => 'required|numeric',
-            'id_tarifa' => 'required|exists:tarifa,id_tarifa',
-        ]);
+        // Aceptar tanto JSON como form data
+        $data = $request->isJson() ? $request->json()->all() : $request->all();
 
-        return response()->json(TarifaService::calcularDesdeCoordenadas(
-            $request->origen_lat, $request->origen_lng,
-            $request->destino_lat, $request->destino_lng,
-            $request->id_tarifa
-        ));
+        $oLat = isset($data['origen_lat']) ? (float)$data['origen_lat'] : null;
+        $oLng = isset($data['origen_lng']) ? (float)$data['origen_lng'] : null;
+        $dLat = isset($data['destino_lat']) ? (float)$data['destino_lat'] : null;
+        $dLng = isset($data['destino_lng']) ? (float)$data['destino_lng'] : null;
+        $idTarifa = isset($data['id_tarifa']) ? (int)$data['id_tarifa'] : null;
+
+        if (!$oLat || !$oLng || !$dLat || !$dLng || !$idTarifa) {
+            return response()->json([
+                'error' => true,
+                'mensaje' => 'Faltan datos: ' . json_encode(compact('oLat','oLng','dLat','dLng','idTarifa'))
+            ], 422);
+        }
+
+        $tarifa = Tarifa::find($idTarifa);
+        if (!$tarifa) {
+            return response()->json(['error' => true, 'mensaje' => 'Tarifa no encontrada'], 404);
+        }
+
+        // Cálculo Haversine inline (independiente del Service por seguridad)
+        $earthRadius = 6371;
+        $latFrom = deg2rad($oLat); $latTo = deg2rad($dLat);
+        $latDelta = deg2rad($dLat - $oLat);
+        $lngDelta = deg2rad($dLng - $oLng);
+        $a = sin($latDelta / 2) ** 2 + cos($latFrom) * cos($latTo) * sin($lngDelta / 2) ** 2;
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+        $distanciaRecta = $earthRadius * $c;
+        $distanciaReal = round($distanciaRecta * 1.3, 2); // factor calles
+        $duracion = max(3, round($distanciaReal / 25 * 60)); // ~25km/h
+
+        // Surge pricing
+        $hora = (int)now()->format('H');
+        $surge = 1.0;
+        $surgeAplicado = false;
+        if (($hora >= 11 && $hora < 14) || ($hora >= 18 && $hora < 21)) {
+            $surge = 1.25;
+            $surgeAplicado = true;
+        }
+
+        $costoKmTotal = round($distanciaReal * $tarifa->costo_por_km, 2);
+        $costoMinTotal = round($duracion * $tarifa->costo_por_minuto, 2);
+        $subtotal = $tarifa->tarifa_base + $costoKmTotal + $costoMinTotal;
+        $total = round(max($subtotal, $tarifa->tarifa_minima) * $surge, 2);
+
+        return response()->json([
+            'error' => false,
+            'distancia_km' => $distanciaReal,
+            'duracion_min' => $duracion,
+            'tarifa_base' => (float)$tarifa->tarifa_base,
+            'costo_km_total' => $costoKmTotal,
+            'costo_min_total' => $costoMinTotal,
+            'tarifa_minima' => (float)$tarifa->tarifa_minima,
+            'surge_aplicado' => $surgeAplicado,
+            'tarifa_total' => $total,
+        ]);
     }
 
     public function show($id)
@@ -227,26 +270,26 @@ class ViajeController extends Controller
         return view('viaje.show', compact('viaje'));
     }
 
-    public function edit($id) {
+    public function edit($id)
+    {
         $viaje = Viaje::findOrFail($id);
         $tarifas = Tarifa::all();
         return view('viaje.edit', compact('viaje', 'tarifas'));
     }
 
-    public function update(Request $request, $id) {
+    public function update(Request $request, $id)
+    {
         $viaje = Viaje::findOrFail($id);
         $viaje->update($request->all());
         return redirect('viaje')->with('mensaje', 'Viaje actualizado');
     }
 
-    public function destroy($id) {
+    public function destroy($id)
+    {
         Viaje::destroy($id);
         return redirect('viaje')->with('mensaje', 'Viaje eliminado');
     }
 
-    /**
-     * API: Conductores disponibles de una empresa específica
-     */
     public function conductoresEmpresa($idEmpresa)
     {
         $conductores = Conductor::with('usuario:id_usuario,nombre_completo')
@@ -262,7 +305,6 @@ class ViajeController extends Controller
                     'licencia' => $c->licencia_conducir,
                 ];
             });
-
         return response()->json($conductores);
     }
 }

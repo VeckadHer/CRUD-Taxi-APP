@@ -19,6 +19,14 @@
                     </div>
                     @endif
 
+                    <div class="alert alert-info small mb-3">
+                        <strong>ℹ️ Tipos de cuenta:</strong>
+                        <ul class="mb-0 mt-1">
+                            <li><strong>Pasajeros:</strong> deben usar correo <code>@gmail.com</code></li>
+                            <li><strong>Conductores:</strong> deben usar correo <code>@driver.com</code></li>
+                        </ul>
+                    </div>
+
                     <form method="POST" action="{{ url('/login') }}">
                         @csrf
                         <div class="mb-3">
@@ -40,7 +48,7 @@
 
                     <div class="row text-center">
                         <div class="col-6">
-                            <p class="mb-2"><strong>¿Eres usuario?</strong></p>
+                            <p class="mb-2"><strong>¿Eres pasajero?</strong></p>
                             <a href="{{ url('/register') }}" class="btn btn-success">📝 Crear Cuenta</a>
                         </div>
                         <div class="col-6">

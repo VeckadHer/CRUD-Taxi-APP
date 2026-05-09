@@ -13,18 +13,18 @@
         @foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach
     </div>
     @endif
+    @if(Session::has('error'))
+    <div class="alert alert-danger">{{ Session::get('error') }}</div>
+    @endif
 
     <form action="{{ url('/viaje') }}" method="POST" id="formViaje">
         @csrf
         <div class="row">
-            {{-- IZQUIERDA: Formulario --}}
             <div class="col-md-5">
 
                 {{-- Paso 1: Empresa --}}
                 <div class="card shadow-sm mb-3">
-                    <div class="card-header bg-primary text-white">
-                        <strong>1️⃣ Empresa de Servicio</strong>
-                    </div>
+                    <div class="card-header bg-primary text-white"><strong>1️⃣ Empresa de Servicio</strong></div>
                     <div class="card-body">
                         <select name="id_empresa" id="id_empresa" class="form-control" required>
                             <option value="">— Selecciona empresa —</option>
@@ -55,9 +55,7 @@
 
                 {{-- Paso 3: Direcciones --}}
                 <div class="card shadow-sm mb-3" id="cardDirecciones" style="display:none;">
-                    <div class="card-header bg-warning text-dark">
-                        <strong>3️⃣ Direcciones</strong>
-                    </div>
+                    <div class="card-header bg-warning text-dark"><strong>3️⃣ Direcciones</strong></div>
                     <div class="card-body">
                         <div class="mb-3">
                             <label class="form-label">📍 Dirección de Origen</label>
@@ -91,11 +89,9 @@
                     </div>
                 </div>
 
-                {{-- Paso 4: Calcular y solicitar --}}
+                {{-- Paso 4: Calcular --}}
                 <div class="card shadow-sm mb-3" id="cardCalculo" style="display:none;">
-                    <div class="card-header bg-dark text-white">
-                        <strong>4️⃣ Calcular Tarifa y Solicitar</strong>
-                    </div>
+                    <div class="card-header bg-dark text-white"><strong>4️⃣ Calcular Tarifa y Solicitar</strong></div>
                     <div class="card-body">
                         <button type="button" class="btn btn-info w-100 mb-2" onclick="calcularTarifa()">
                             💰 Calcular Tarifa
@@ -121,7 +117,6 @@
                 </div>
             </div>
 
-            {{-- DERECHA: Mapa --}}
             <div class="col-md-7">
                 <div class="card shadow-sm">
                     <div class="card-header bg-dark text-white">🗺️ Mapa de Iguala de la Independencia</div>
@@ -143,7 +138,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 let markerOrigen = null, markerDestino = null, ruta = null;
 
-// Verificar coords dentro de Iguala (radio aprox 10km)
 function dentroDeIguala(lat, lng) {
     const distLat = Math.abs(lat - 18.3447);
     const distLng = Math.abs(lng - (-99.5388));
@@ -177,7 +171,6 @@ function actualizarMarker(tipo, lat, lng, nombre) {
     }
 }
 
-// Geocoding con Nominatim (OpenStreetMap)
 function buscarDireccion(tipo) {
     const input = document.getElementById(tipo + '_input').value.trim();
     if (!input) { alert('Escribe una dirección'); return; }
@@ -185,12 +178,10 @@ function buscarDireccion(tipo) {
     status.textContent = '🔄 Buscando...';
     status.className = 'text-info';
 
-    // Buscar primero "dirección, Iguala, Guerrero"
     const query = encodeURIComponent(input + ', Iguala, Guerrero, México');
     fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=5`)
         .then(r => r.json())
         .then(data => {
-            // Filtrar resultados que estén dentro de Iguala
             let resultado = data.find(d => dentroDeIguala(parseFloat(d.lat), parseFloat(d.lon)));
             if (!resultado && data.length > 0) resultado = data[0];
 
@@ -224,7 +215,6 @@ function buscarDireccion(tipo) {
         });
 }
 
-// Empresa → cargar conductores
 document.getElementById('id_empresa').addEventListener('change', function() {
     const empresaId = this.value;
     const tarifaId = this.options[this.selectedIndex].dataset.tarifa;
@@ -273,26 +263,51 @@ function chequearProgreso() {
 }
 
 function calcularTarifa() {
-    const data = {
-        origen_lat: document.getElementById('origen_lat').value,
-        origen_lng: document.getElementById('origen_lng').value,
-        destino_lat: document.getElementById('destino_lat').value,
-        destino_lng: document.getElementById('destino_lng').value,
-        id_tarifa: document.getElementById('id_tarifa').value,
-    };
+    // FIX: Validar campos antes de enviar
+    const oLat = document.getElementById('origen_lat').value;
+    const oLng = document.getElementById('origen_lng').value;
+    const dLat = document.getElementById('destino_lat').value;
+    const dLng = document.getElementById('destino_lng').value;
+    const idTarifa = document.getElementById('id_tarifa').value;
 
-    if (!data.origen_lat || !data.destino_lat || !data.id_tarifa) {
-        alert('Completa todos los datos');
+    if (!oLat || !oLng || !dLat || !dLng || !idTarifa) {
+        alert('Datos faltantes:\n' +
+              '- Origen lat: ' + (oLat || 'FALTA') + '\n' +
+              '- Origen lng: ' + (oLng || 'FALTA') + '\n' +
+              '- Destino lat: ' + (dLat || 'FALTA') + '\n' +
+              '- Destino lng: ' + (dLng || 'FALTA') + '\n' +
+              '- Tarifa: ' + (idTarifa || 'FALTA') + '\n\n' +
+              'Verifica que hayas buscado las direcciones (botón 🔍 Buscar).');
         return;
     }
 
+    // Construir FormData (más compatible que JSON)
+    const formData = new FormData();
+    formData.append('_token', '{{ csrf_token() }}');
+    formData.append('origen_lat', oLat);
+    formData.append('origen_lng', oLng);
+    formData.append('destino_lat', dLat);
+    formData.append('destino_lng', dLng);
+    formData.append('id_tarifa', idTarifa);
+
     fetch('{{ url("/viaje/calcular-tarifa") }}', {
         method: 'POST',
-        headers: {'Content-Type':'application/json', 'X-CSRF-TOKEN':'{{ csrf_token() }}'},
-        body: JSON.stringify(data)
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
     })
-    .then(r => r.json())
+    .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    })
     .then(res => {
+        if (res.error) {
+            alert('Error: ' + res.mensaje);
+            return;
+        }
         document.getElementById('r_distancia').textContent = res.distancia_km + ' km';
         document.getElementById('r_duracion').textContent = res.duracion_min + ' min';
         document.getElementById('r_base').textContent = res.tarifa_base;
@@ -302,6 +317,10 @@ function calcularTarifa() {
         document.getElementById('r_surge').style.display = res.surge_aplicado ? 'table-row' : 'none';
         document.getElementById('resultadoTarifa').style.display = 'block';
         document.getElementById('btnSolicitar').disabled = false;
+    })
+    .catch(err => {
+        alert('Error al calcular tarifa: ' + err.message + '\n\nVerifica la consola del navegador (F12) para más detalles.');
+        console.error(err);
     });
 }
 </script>

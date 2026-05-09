@@ -14,18 +14,11 @@ class ConductorController extends Controller
     public function index(Request $request)
     {
         $query = Conductor::with(['usuario', 'empresa']);
-
-        // Filtros opcionales
-        if ($request->filled('empresa')) {
-            $query->where('id_empresa', $request->empresa);
-        }
-        if ($request->filled('estado')) {
-            $query->where('estado', $request->estado);
-        }
+        if ($request->filled('empresa')) $query->where('id_empresa', $request->empresa);
+        if ($request->filled('estado'))  $query->where('estado', $request->estado);
 
         $conductores = $query->orderByDesc('id_conductor')->paginate(15);
         $empresas = Empresa::all();
-
         return view('conductor.index', compact('conductores', 'empresas'));
     }
 
@@ -44,7 +37,14 @@ class ConductorController extends Controller
             'fecha_nacimiento' => 'required|date|before_or_equal:' . date('Y-m-d', strtotime('-18 years')),
             'domicilio' => 'required|string|max:200',
             'codigo_postal' => 'required|string|max:10',
-            'email' => 'required|email|unique:usuario,email',
+            'email' => [
+                'required', 'email', 'unique:usuario,email',
+                function ($attr, $value, $fail) {
+                    if (!str_ends_with(strtolower($value), '@driver.com')) {
+                        $fail('El email del conductor debe terminar en @driver.com');
+                    }
+                },
+            ],
             'telefono' => 'required|string|max:20',
             'password' => 'required|min:6',
             'tipo_vehiculo_operar' => 'required|in:particular,empresa',
@@ -57,31 +57,26 @@ class ConductorController extends Controller
         ]);
 
         DB::transaction(function () use ($request) {
-            // Crear usuario
             $u = Usuario::create([
                 'nombre_usuario' => 'cond_' . strtolower(explode('@', $request->email)[0]),
                 'hash_contrasena' => Hash::make($request->password),
                 'nombre_completo' => trim($request->nombre . ' ' . $request->apellido_paterno . ' ' . $request->apellido_materno),
                 'apellido_paterno' => $request->apellido_paterno,
                 'apellido_materno' => $request->apellido_materno,
-                'email' => $request->email,
+                'email' => strtolower($request->email),
                 'telefono' => $request->telefono,
                 'fecha_nacimiento' => $request->fecha_nacimiento,
                 'domicilio' => $request->domicilio,
                 'codigo_postal' => $request->codigo_postal,
-                'fecha_creacion' => now(),
-                'activo' => true,
-                'rol' => 'conductor',
+                'fecha_creacion' => now(), 'activo' => true, 'rol' => 'conductor',
             ]);
 
-            // Crear conductor (sin estado/disponibilidad, lo controla el conductor)
             Conductor::create([
                 'id_usuario' => $u->id_usuario,
                 'id_empresa' => $request->id_empresa,
                 'licencia_conducir' => $request->licencia_conducir,
                 'calificacion_promedio' => 5.00,
-                'disponible' => false,
-                'estado' => 'inactivo',
+                'disponible' => false, 'estado' => 'inactivo',
                 'tipo_vehiculo_operar' => $request->tipo_vehiculo_operar,
             ]);
         });
@@ -105,7 +100,6 @@ class ConductorController extends Controller
     public function update(Request $request, $id)
     {
         $conductor = Conductor::findOrFail($id);
-
         $request->validate([
             'nombre' => 'required|string',
             'apellido_paterno' => 'required|string',
@@ -127,14 +121,12 @@ class ConductorController extends Controller
                 'domicilio' => $request->domicilio,
                 'codigo_postal' => $request->codigo_postal,
             ]);
-
             $conductor->update([
                 'id_empresa' => $request->id_empresa,
                 'licencia_conducir' => $request->licencia_conducir,
                 'tipo_vehiculo_operar' => $request->tipo_vehiculo_operar,
             ]);
         });
-
         return redirect('/conductor')->with('mensaje', '✓ Conductor actualizado');
     }
 
@@ -149,9 +141,6 @@ class ConductorController extends Controller
         return redirect('/conductor')->with('mensaje', '✓ Conductor eliminado');
     }
 
-    /**
-     * Toggle disponibilidad (lo usa el conductor desde su dashboard)
-     */
     public function toggleDisponibilidad(Request $request)
     {
         $user = auth()->user();
@@ -159,12 +148,10 @@ class ConductorController extends Controller
         if (!$conductor) return back()->with('error', 'No eres conductor');
 
         $request->validate(['estado' => 'required|in:disponible,inactivo,en_viaje']);
-
         $conductor->update([
             'estado' => $request->estado,
             'disponible' => $request->estado === 'disponible',
         ]);
-
         return back()->with('mensaje', '✓ Estado actualizado a: ' . $request->estado);
     }
 }

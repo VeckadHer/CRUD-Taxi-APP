@@ -21,8 +21,18 @@ class LoginController extends Controller
             'password' => 'required',
         ]);
 
-        $user = Usuario::where('email', $request->email)->first();
+        $email = strtolower(trim($request->email));
+
+        $user = Usuario::where('email', $email)->first();
         if ($user && Hash::check($request->password, $user->hash_contrasena)) {
+            // Validar coincidencia rol-dominio (excepto admin)
+            if ($user->rol === 'pasajero' && !str_ends_with($email, '@gmail.com')) {
+                return back()->withErrors(['email' => 'Las cuentas de pasajero deben usar @gmail.com'])->withInput();
+            }
+            if ($user->rol === 'conductor' && !str_ends_with($email, '@driver.com')) {
+                return back()->withErrors(['email' => 'Las cuentas de conductor deben usar @driver.com'])->withInput();
+            }
+
             Auth::login($user, $request->boolean('remember'));
             $user->update(['ultimo_acceso' => now()]);
             return redirect('/dashboard');
@@ -42,8 +52,7 @@ class LoginController extends Controller
     public function showRegister() { return view('auth.register'); }
 
     /**
-     * Registro SOLO para pasajeros.
-     * Si alguien quiere ser conductor, deja sus datos en otro form.
+     * Registro SOLO para pasajeros con email @gmail.com
      */
     public function register(Request $request)
     {
@@ -52,7 +61,14 @@ class LoginController extends Controller
             'apellido_paterno' => 'required|string|max:50',
             'apellido_materno' => 'required|string|max:50',
             'fecha_nacimiento' => 'required|date|before_or_equal:' . date('Y-m-d', strtotime('-18 years')),
-            'email' => 'required|email|unique:usuario,email',
+            'email' => [
+                'required', 'email', 'unique:usuario,email',
+                function ($attr, $value, $fail) {
+                    if (!str_ends_with(strtolower($value), '@gmail.com')) {
+                        $fail('El email debe ser @gmail.com para registrarse como pasajero.');
+                    }
+                },
+            ],
             'telefono' => 'required|string|max:20',
             'domicilio' => 'required|string|max:200',
             'codigo_postal' => 'required|string|max:10',
@@ -66,7 +82,7 @@ class LoginController extends Controller
             'nombre_completo' => trim($request->nombre . ' ' . $request->apellido_paterno . ' ' . $request->apellido_materno),
             'apellido_paterno' => $request->apellido_paterno,
             'apellido_materno' => $request->apellido_materno,
-            'email' => $request->email,
+            'email' => strtolower($request->email),
             'telefono' => $request->telefono,
             'fecha_nacimiento' => $request->fecha_nacimiento,
             'domicilio' => $request->domicilio,
@@ -74,7 +90,7 @@ class LoginController extends Controller
             'hash_contrasena' => Hash::make($request->password),
             'fecha_creacion' => now(),
             'activo' => true,
-            'rol' => 'pasajero', // SIEMPRE pasajero
+            'rol' => 'pasajero',
         ]);
 
         Pasajero::create([
@@ -87,9 +103,6 @@ class LoginController extends Controller
         return redirect('/dashboard')->with('mensaje', '¡Bienvenido! Tu cuenta fue creada exitosamente.');
     }
 
-    /**
-     * Form para que alguien deje su tel para ser contactado como conductor
-     */
     public function showSolicitudConductor()
     {
         return view('auth.solicitud_conductor');

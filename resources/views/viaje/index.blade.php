@@ -1,6 +1,6 @@
 @extends('layouts.app')
 @section('content')
-<div class="container mt-4">
+<div class="container-fluid mt-4">
     @if(Session::has('mensaje'))
     <div class="alert alert-success alert-dismissible fade show">
         {{ Session::get('mensaje') }}
@@ -22,8 +22,10 @@
                     <thead class="table-dark">
                         <tr>
                             <th>#</th>
+                            <th>Fecha</th>
                             <th>Pasajero</th>
                             <th>Conductor</th>
+                            <th>Empresa</th>
                             <th>Origen → Destino</th>
                             <th>Distancia</th>
                             <th>Estado</th>
@@ -35,9 +37,22 @@
                         @forelse($viajes as $v)
                         <tr>
                             <td>{{ $v->id_viaje }}</td>
+                            <td>
+                                <small>
+                                    @if($v->fecha_solicitud)
+                                        {{ \Carbon\Carbon::parse($v->fecha_solicitud)->format('d/m/y') }}<br>
+                                        <span class="text-muted">{{ \Carbon\Carbon::parse($v->fecha_solicitud)->format('H:i') }}</span>
+                                    @else — @endif
+                                </small>
+                            </td>
                             <td>{{ $v->pasajero->usuario->nombre_completo ?? 'N/A' }}</td>
                             <td>{{ $v->conductor->usuario->nombre_completo ?? '—' }}</td>
-                            <td><small>{{ $v->origen_descripcion }} → {{ $v->destino_descripcion }}</small></td>
+                            <td>
+                                @if($v->conductor && $v->conductor->empresa)
+                                    <span class="badge bg-info">{{ $v->conductor->empresa->nombre }}</span>
+                                @else — @endif
+                            </td>
+                            <td><small>{{ Str::limit($v->origen_descripcion, 25) }} → {{ Str::limit($v->destino_descripcion, 25) }}</small></td>
                             <td>{{ $v->distancia_km }} km</td>
                             <td>
                                 @php $colors = ['solicitado'=>'warning','en_curso'=>'info','completado'=>'success','cancelado'=>'danger']; @endphp
@@ -55,7 +70,7 @@
                             </td>
                         </tr>
                         @empty
-                        <tr><td colspan="8" class="text-center text-muted py-3">No hay viajes</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted py-3">No hay viajes</td></tr>
                         @endforelse
                     </tbody>
                 </table>
